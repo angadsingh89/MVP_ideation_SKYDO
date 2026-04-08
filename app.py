@@ -167,6 +167,47 @@ def theme_css() -> str:
     .status-overdue{color:#9a4f4a;background:rgba(176,112,94,.14);border-color:rgba(176,112,94,.20);}
     .status-partial{color:#8a6435;background:rgba(230,201,168,.34);border-color:rgba(196,158,116,.24);}
     .status-pending{color:#4b6666;background:rgba(92,122,122,.14);border-color:rgba(92,122,122,.20);}
+    [data-testid="stExpander"]{
+      border:1px solid var(--line);
+      border-radius:14px;
+      background:rgba(255,255,255,.62);
+    }
+    [data-testid="stExpander"] details summary{
+      color:#1E1E1E !important;
+      font-weight:600;
+      padding:.4rem .2rem;
+    }
+    [data-testid="stForm"]{
+      background:transparent;
+    }
+    [data-testid="stForm"] label,
+    [data-testid="stForm"] p{
+      color:#334155 !important;
+    }
+    [data-testid="stTextInput"] input,
+    [data-testid="stDateInput"] input,
+    [data-testid="stNumberInput"] input{
+      background:rgba(255,255,255,.92) !important;
+      color:#1E1E1E !important;
+      border:1px solid var(--line) !important;
+      border-radius:10px !important;
+    }
+    [data-testid="stDateInput"] button,
+    [data-testid="stNumberInput"] button{
+      color:#3f4d4d !important;
+      background:rgba(255,255,255,.9) !important;
+      border:1px solid var(--line) !important;
+    }
+    [data-testid="stFormSubmitButton"] button{
+      background:var(--primary) !important;
+      color:white !important;
+      border:none !important;
+      border-radius:10px !important;
+      box-shadow:0 8px 18px rgba(47,111,94,.16) !important;
+    }
+    [data-testid="stFormSubmitButton"] button:hover{
+      background:var(--primary-dark) !important;
+    }
     @media (max-width: 900px){
       .hero-title{font-size:1.9rem;}
     }
