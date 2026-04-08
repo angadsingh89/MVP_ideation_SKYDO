@@ -241,6 +241,22 @@ def init_db():
         )
         """
     )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            payment_reference TEXT UNIQUE NOT NULL,
+            invoice_number TEXT NOT NULL,
+            client_name TEXT NOT NULL,
+            payment_date TEXT NOT NULL,
+            source_currency TEXT NOT NULL,
+            net_amount_base REAL NOT NULL,
+            status TEXT NOT NULL,
+            delta_amount_base REAL NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
     conn.commit()
     conn.close()
 
@@ -263,6 +279,29 @@ def seed_invoices_if_empty():
             INSERT INTO invoices (
                 invoice_number, client_name, due_date, amount, amount_paid_base, status, last_payment_date, created_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+        conn.commit()
+    conn.close()
+
+
+def seed_payments_if_empty():
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM payments")
+    count = cur.fetchone()[0]
+    if count == 0:
+        today = date.today()
+        rows = [
+            ("PAY-EXACT-001", "INV-1001", "Northwind Retail", str(today - timedelta(days=8)), "USD", 250000.0, "matched", 0.0, datetime.utcnow().isoformat()),
+            ("PAY-PARTIAL-001", "INV-1002", "Northwind Retail", str(today - timedelta(days=1)), "USD", 99000.0, "partially_matched", 81000.0, datetime.utcnow().isoformat()),
+        ]
+        cur.executemany(
+            """
+            INSERT INTO payments (
+                payment_reference, invoice_number, client_name, payment_date, source_currency, net_amount_base, status, delta_amount_base, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             rows,
         )
@@ -301,21 +340,95 @@ def add_invoice(invoice_number: str, client_name: str, due_date: date, amount: f
     conn.close()
 
 
-def build_demo_payments_reconciliation():
-    today = date.today()
-    payments = pd.DataFrame(
-        [
-            {"payment_reference": "PAY-EXACT-001", "client_name": "Northwind Retail", "payment_date": today - timedelta(days=8), "amount_received": 3000.0, "source_currency": "USD", "net_amount_base": 250000.0},
-            {"payment_reference": "PAY-PARTIAL-001", "client_name": "Northwind Retail", "payment_date": today - timedelta(days=1), "amount_received": 1200.0, "source_currency": "USD", "net_amount_base": 99000.0},
-        ]
+def load_payments():
+    conn = get_connection()
+    payments = pd.read_sql_query("SELECT * FROM payments ORDER BY payment_date DESC, id DESC", conn)
+    conn.close()
+    if payments.empty:
+        return pd.DataFrame(
+            columns=[
+                "id",
+                "payment_reference",
+                "invoice_number",
+                "client_name",
+                "payment_date",
+                "source_currency",
+                "net_amount_base",
+                "status",
+                "delta_amount_base",
+            ]
+        )
+    return payments
+
+
+def record_payment(payment_reference: str, invoice_number: str, payment_date: date, source_currency: str, net_amount_base: float):
+    conn = get_connection()
+    cur = conn.cursor()
+    row = cur.execute(
+        """
+        SELECT client_name, amount, amount_paid_base FROM invoices WHERE invoice_number = ?
+        """,
+        (invoice_number,),
+    ).fetchone()
+    if not row:
+        conn.close()
+        raise ValueError("Invoice not found.")
+
+    client_name, amount, amount_paid_base = row
+    new_paid = float(amount_paid_base) + float(net_amount_base)
+    delta = max(float(amount) - new_paid, 0.0)
+    if delta <= 1:
+        status = "paid"
+        match_status = "matched"
+    elif new_paid > 0:
+        status = "partially_paid"
+        match_status = "partially_matched"
+    else:
+        status = "pending"
+        match_status = "unmatched"
+
+    cur.execute(
+        """
+        UPDATE invoices
+        SET amount_paid_base = ?, status = ?, last_payment_date = ?
+        WHERE invoice_number = ?
+        """,
+        (new_paid, status, str(payment_date), invoice_number),
     )
-    reconciliation = pd.DataFrame(
-        [
-            {"payment_id": 1, "invoice_id": 1, "status": "matched", "matched_amount_base": 250000.0, "delta_amount_base": 0.0},
-            {"payment_id": 2, "invoice_id": 2, "status": "partially_matched", "matched_amount_base": 99000.0, "delta_amount_base": 81000.0},
-        ]
+    cur.execute(
+        """
+        INSERT INTO payments (
+            payment_reference, invoice_number, client_name, payment_date, source_currency, net_amount_base, status, delta_amount_base, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            payment_reference.strip(),
+            invoice_number,
+            client_name,
+            str(payment_date),
+            source_currency,
+            float(net_amount_base),
+            match_status,
+            float(delta),
+            datetime.utcnow().isoformat(),
+        ),
     )
-    return payments, reconciliation
+    conn.commit()
+    conn.close()
+
+
+def build_reconciliation_from_payments(payments: pd.DataFrame):
+    if payments.empty:
+        return pd.DataFrame(columns=["payment_id", "invoice_id", "status", "matched_amount_base", "delta_amount_base"])
+    return pd.DataFrame(
+        {
+            "payment_id": payments["id"],
+            "invoice_id": payments["invoice_number"],
+            "status": payments["status"],
+            "matched_amount_base": payments["net_amount_base"],
+            "delta_amount_base": payments["delta_amount_base"],
+        }
+    )
 
 
 def compute_summary(invoices: pd.DataFrame, payments: pd.DataFrame):
@@ -424,8 +537,10 @@ def main():
     st.markdown(theme_css(), unsafe_allow_html=True)
     init_db()
     seed_invoices_if_empty()
+    seed_payments_if_empty()
     invoices = load_invoices()
-    payments, reconciliation = build_demo_payments_reconciliation()
+    payments = load_payments()
+    reconciliation = build_reconciliation_from_payments(payments)
     total_received, expected_7d, overdue_amount, risky_clients, invoices = compute_summary(invoices, payments)
 
     with st.sidebar:
@@ -459,6 +574,29 @@ def main():
                         st.rerun()
                     except sqlite3.IntegrityError:
                         st.error("Invoice number already exists.")
+    with st.expander("Record Payment", expanded=False):
+        with st.form("record_payment_form", clear_on_submit=True):
+            p1, p2 = st.columns(2)
+            payment_reference = p1.text_input("Payment Reference", placeholder="PAY-NEW-001")
+            source_currency = p2.selectbox("Source Currency", options=["USD", "EUR", "GBP", "INR"], index=0)
+            p3, p4 = st.columns(2)
+            invoice_options = invoices["invoice_number"].tolist()
+            invoice_number = p3.selectbox("Invoice Number", options=invoice_options if invoice_options else ["No invoices"])
+            payment_date = p4.date_input("Payment Date", value=date.today())
+            net_amount_base = st.number_input("Net Amount Settled (INR)", min_value=1000.0, step=1000.0, value=50000.0)
+            pay_submitted = st.form_submit_button("Record Payment")
+            if pay_submitted:
+                if not payment_reference.strip() or not invoice_options:
+                    st.error("Valid payment reference and invoice are required.")
+                else:
+                    try:
+                        record_payment(payment_reference, invoice_number, payment_date, source_currency, net_amount_base)
+                        st.success("Payment recorded and invoice updated.")
+                        st.rerun()
+                    except sqlite3.IntegrityError:
+                        st.error("Payment reference already exists.")
+                    except ValueError as exc:
+                        st.error(str(exc))
     st.markdown(
         """
         <div class="hero">
@@ -501,17 +639,54 @@ def main():
         st.markdown("</div>", unsafe_allow_html=True)
 
     st.write("")
+    with st.expander("What-if Cashflow Simulator", expanded=False):
+        s1, s2, s3 = st.columns(3)
+        sim_invoice = s1.number_input("Invoice Amount (USD)", min_value=100.0, value=5000.0, step=100.0)
+        sim_fx = s2.slider("FX Rate (USD to INR)", min_value=70.0, max_value=100.0, value=92.5, step=0.1)
+        sim_fee = s3.slider("Total Fees (%)", min_value=0.0, max_value=5.0, value=1.2, step=0.1)
+        sim_delay = st.slider("Predicted Delay (days)", min_value=0, max_value=45, value=8, step=1)
+        gross = sim_invoice * sim_fx
+        net = gross * (1 - sim_fee / 100)
+        c_a, c_b, c_c = st.columns(3)
+        c_a.metric("Gross INR", inr(gross))
+        c_b.metric("Net INR", inr(net))
+        c_c.metric("Predicted Realization Date", str(date.today() + timedelta(days=sim_delay)))
+
+    st.write("")
+    f1, f2, f3 = st.columns([1.3, 1.3, 2.4])
+    status_filter = f1.multiselect(
+        "Filter Status",
+        options=sorted(invoices["status"].astype(str).unique().tolist()),
+        default=[],
+    )
+    client_filter = f2.multiselect(
+        "Filter Client",
+        options=sorted(invoices["client_name"].astype(str).unique().tolist()),
+        default=[],
+    )
+    invoice_search = f3.text_input("Search Invoice", placeholder="Type invoice number...")
+
+    view_invoices = invoices.copy()
+    if status_filter:
+        view_invoices = view_invoices[view_invoices["status"].isin(status_filter)]
+    if client_filter:
+        view_invoices = view_invoices[view_invoices["client_name"].isin(client_filter)]
+    if invoice_search.strip():
+        view_invoices = view_invoices[
+            view_invoices["invoice_number"].str.contains(invoice_search.strip(), case=False, na=False)
+        ]
+
     t1, t2 = st.columns(2, gap="large")
     with t1:
         st.markdown('<div class="section-title">Invoices</div>', unsafe_allow_html=True)
-        iv = invoices[["invoice_number", "client_name", "due_date", "status", "amount_paid_base", "amount"]].copy()
+        iv = view_invoices[["invoice_number", "client_name", "due_date", "status", "amount_paid_base", "amount"]].copy()
         iv["due_date"] = pd.to_datetime(iv["due_date"]).dt.strftime("%Y-%m-%d")
         iv["amount_paid_base"] = iv["amount_paid_base"].map(inr)
         iv["amount"] = iv["amount"].map(inr)
         render_table(iv)
     with t2:
         st.markdown('<div class="section-title">Payments</div>', unsafe_allow_html=True)
-        pv = payments[["payment_reference", "client_name", "payment_date", "source_currency", "net_amount_base"]].copy()
+        pv = payments[["payment_reference", "invoice_number", "client_name", "payment_date", "source_currency", "net_amount_base"]].copy()
         pv["payment_date"] = pd.to_datetime(pv["payment_date"]).dt.strftime("%Y-%m-%d")
         pv["net_amount_base"] = pv["net_amount_base"].map(inr)
         render_table(pv)
