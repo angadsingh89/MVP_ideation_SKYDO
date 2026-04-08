@@ -208,6 +208,54 @@ def theme_css() -> str:
     [data-testid="stFormSubmitButton"] button:hover{
       background:var(--primary-dark) !important;
     }
+    [data-baseweb="select"] > div,
+    [data-baseweb="input"] > div,
+    [data-baseweb="input"] input,
+    [data-baseweb="textarea"] > div,
+    [data-baseweb="textarea"] textarea{
+      background:rgba(255,255,255,.92) !important;
+      color:#1E1E1E !important;
+      border-color:var(--line) !important;
+    }
+    [data-baseweb="select"] span,
+    [data-baseweb="select"] div,
+    [data-baseweb="input"] input,
+    [data-baseweb="textarea"] textarea{
+      color:#1E1E1E !important;
+    }
+    [data-baseweb="popover"]{
+      background:rgba(255,255,255,.98) !important;
+      color:#1E1E1E !important;
+    }
+    [data-baseweb="menu"]{
+      background:rgba(255,255,255,.98) !important;
+      color:#1E1E1E !important;
+      border:1px solid var(--line) !important;
+    }
+    [role="option"]{
+      color:#1E1E1E !important;
+      background:rgba(255,255,255,.98) !important;
+    }
+    [role="option"][aria-selected="true"]{
+      background:rgba(47,111,94,.10) !important;
+    }
+    [data-testid="stSlider"] label,
+    [data-testid="stNumberInput"] label,
+    [data-testid="stMultiSelect"] label,
+    [data-testid="stSelectbox"] label,
+    [data-testid="stTextInput"] label{
+      color:#334155 !important;
+    }
+    [data-testid="stSlider"] [data-baseweb="slider"] [role="slider"]{
+      background:var(--primary) !important;
+      border-color:var(--primary) !important;
+    }
+    [data-testid="stSlider"] [data-baseweb="slider"] > div > div{
+      background:rgba(47,111,94,.22) !important;
+    }
+    [data-testid="stSlider"] [data-baseweb="slider"] p{
+      color:#1E1E1E !important;
+    }
     @media (max-width: 900px){
       .hero-title{font-size:1.9rem;}
     }
