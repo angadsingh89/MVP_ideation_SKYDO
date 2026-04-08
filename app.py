@@ -1,4 +1,5 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+import sqlite3
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -177,16 +178,90 @@ def inr(value: float) -> str:
     return f"Rs {value:,.0f}"
 
 
-def build_demo_data():
-    today = date.today()
-    invoices = pd.DataFrame(
-        [
-            {"invoice_number": "INV-1001", "client_name": "Northwind Retail", "due_date": today - timedelta(days=10), "amount": 250000.0, "amount_paid_base": 250000.0, "status": "paid", "last_payment_date": today - timedelta(days=8)},
-            {"invoice_number": "INV-1002", "client_name": "Northwind Retail", "due_date": today + timedelta(days=3), "amount": 180000.0, "amount_paid_base": 99000.0, "status": "partially_paid", "last_payment_date": today - timedelta(days=1)},
-            {"invoice_number": "INV-2001", "client_name": "LatePay GmbH", "due_date": today - timedelta(days=15), "amount": 325000.0, "amount_paid_base": 0.0, "status": "pending", "last_payment_date": None},
-            {"invoice_number": "INV-1999", "client_name": "LatePay GmbH", "due_date": today - timedelta(days=60), "amount": 210000.0, "amount_paid_base": 210000.0, "status": "paid", "last_payment_date": today - timedelta(days=40)},
-        ]
+def get_connection():
+    return sqlite3.connect("cashflow_streamlit.db")
+
+
+def init_db():
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS invoices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            invoice_number TEXT UNIQUE NOT NULL,
+            client_name TEXT NOT NULL,
+            due_date TEXT NOT NULL,
+            amount REAL NOT NULL,
+            amount_paid_base REAL NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'pending',
+            last_payment_date TEXT,
+            created_at TEXT NOT NULL
+        )
+        """
     )
+    conn.commit()
+    conn.close()
+
+
+def seed_invoices_if_empty():
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM invoices")
+    count = cur.fetchone()[0]
+    if count == 0:
+        today = date.today()
+        rows = [
+            ("INV-1001", "Northwind Retail", str(today - timedelta(days=10)), 250000.0, 250000.0, "paid", str(today - timedelta(days=8)), datetime.utcnow().isoformat()),
+            ("INV-1002", "Northwind Retail", str(today + timedelta(days=3)), 180000.0, 99000.0, "partially_paid", str(today - timedelta(days=1)), datetime.utcnow().isoformat()),
+            ("INV-2001", "LatePay GmbH", str(today - timedelta(days=15)), 325000.0, 0.0, "pending", None, datetime.utcnow().isoformat()),
+            ("INV-1999", "LatePay GmbH", str(today - timedelta(days=60)), 210000.0, 210000.0, "paid", str(today - timedelta(days=40)), datetime.utcnow().isoformat()),
+        ]
+        cur.executemany(
+            """
+            INSERT INTO invoices (
+                invoice_number, client_name, due_date, amount, amount_paid_base, status, last_payment_date, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+        conn.commit()
+    conn.close()
+
+
+def load_invoices():
+    conn = get_connection()
+    invoices = pd.read_sql_query("SELECT * FROM invoices ORDER BY due_date ASC", conn)
+    conn.close()
+    return invoices
+
+
+def add_invoice(invoice_number: str, client_name: str, due_date: date, amount: float):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO invoices (
+            invoice_number, client_name, due_date, amount, amount_paid_base, status, last_payment_date, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            invoice_number.strip(),
+            client_name.strip(),
+            str(due_date),
+            float(amount),
+            0.0,
+            "pending",
+            None,
+            datetime.utcnow().isoformat(),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+
+def build_demo_payments_reconciliation():
+    today = date.today()
     payments = pd.DataFrame(
         [
             {"payment_reference": "PAY-EXACT-001", "client_name": "Northwind Retail", "payment_date": today - timedelta(days=8), "amount_received": 3000.0, "source_currency": "USD", "net_amount_base": 250000.0},
@@ -199,7 +274,7 @@ def build_demo_data():
             {"payment_id": 2, "invoice_id": 2, "status": "partially_matched", "matched_amount_base": 99000.0, "delta_amount_base": 81000.0},
         ]
     )
-    return invoices, payments, reconciliation
+    return payments, reconciliation
 
 
 def compute_summary(invoices: pd.DataFrame, payments: pd.DataFrame):
@@ -306,7 +381,10 @@ def render_table(df: pd.DataFrame):
 
 def main():
     st.markdown(theme_css(), unsafe_allow_html=True)
-    invoices, payments, reconciliation = build_demo_data()
+    init_db()
+    seed_invoices_if_empty()
+    invoices = load_invoices()
+    payments, reconciliation = build_demo_payments_reconciliation()
     total_received, expected_7d, overdue_amount, risky_clients, invoices = compute_summary(invoices, payments)
 
     with st.sidebar:
@@ -321,6 +399,25 @@ def main():
         '<div class="topbar"><span class="badge">Live • Export Intelligence</span><button class="btn-primary">Create Invoice</button></div>',
         unsafe_allow_html=True,
     )
+    with st.expander("Create Invoice", expanded=False):
+        with st.form("create_invoice_form", clear_on_submit=True):
+            f1, f2 = st.columns(2)
+            invoice_number = f1.text_input("Invoice Number", placeholder="INV-3001")
+            client_name = f2.text_input("Client Name", placeholder="Acme Imports")
+            f3, f4 = st.columns(2)
+            due_date = f3.date_input("Due Date", value=date.today() + timedelta(days=7))
+            amount = f4.number_input("Amount (INR)", min_value=1000.0, step=1000.0, value=50000.0)
+            submitted = st.form_submit_button("Create Invoice")
+            if submitted:
+                if not invoice_number.strip() or not client_name.strip():
+                    st.error("Invoice number and client name are required.")
+                else:
+                    try:
+                        add_invoice(invoice_number, client_name, due_date, amount)
+                        st.success("Invoice created successfully.")
+                        st.rerun()
+                    except sqlite3.IntegrityError:
+                        st.error("Invoice number already exists.")
     st.markdown(
         """
         <div class="hero">
