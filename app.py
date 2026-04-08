@@ -510,7 +510,17 @@ def compute_summary(invoices: pd.DataFrame, payments: pd.DataFrame):
 def forex_chart():
     rates = [88.9, 89.4, 89.1, 90.2, 90.8, 91.7, 91.3, 92.1, 92.53]
     labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun", "Mon", "Tue"]
+    deltas = [0.0] + [round(rates[i] - rates[i - 1], 2) for i in range(1, len(rates))]
+    pct_changes = [0.0] + [round((deltas[i] / rates[i - 1]) * 100, 2) for i in range(1, len(rates))]
+    avg3 = []
+    for i in range(len(rates)):
+        start = max(0, i - 2)
+        avg3.append(round(sum(rates[start : i + 1]) / (i - start + 1), 3))
+
     fig = go.Figure()
+    segment_colors = ["#2F6F5E" if d >= 0 else "#B0705E" for d in deltas]
+
+    # Colored segments for up/down moves.
     for i in range(len(rates) - 1):
         color = "#2F6F5E" if rates[i + 1] >= rates[i] else "#B0705E"
         fig.add_trace(
@@ -518,47 +528,113 @@ def forex_chart():
                 x=[labels[i], labels[i + 1]],
                 y=[rates[i], rates[i + 1]],
                 mode="lines",
-                line=dict(color=color, width=3),
-                hovertemplate="USD/INR: %{y}<extra></extra>",
+                line=dict(color=color, width=3.2),
+                hoverinfo="skip",
                 showlegend=False,
             )
         )
-    markers = ["#2F6F5E"] + ["#2F6F5E" if rates[i] >= rates[i - 1] else "#B0705E" for i in range(1, len(rates))]
-    fig.add_trace(
-        go.Scatter(
-            x=labels,
-            y=rates,
-            mode="markers",
-            marker=dict(size=7, color=markers, line=dict(color="white", width=1.4)),
-            showlegend=False,
-            hovertemplate="USD/INR: %{y}<extra></extra>",
-        )
-    )
+
+    # Main line for smooth area and hover.
     fig.add_trace(
         go.Scatter(
             x=labels,
             y=rates,
             mode="lines",
-            line=dict(color="rgba(60,76,76,.45)", width=1.8),
+            line=dict(color="rgba(47,111,94,.35)", width=2),
             fill="tozeroy",
-            fillcolor="rgba(92,122,122,.12)",
+            fillcolor="rgba(47,111,94,.10)",
+            customdata=list(zip(deltas, pct_changes)),
+            hovertemplate=(
+                "<b>%{x}</b><br>"
+                "Rate: %{y:.2f}<br>"
+                "Change: %{customdata[0]:+.2f} (%{customdata[1]:+.2f}%)<extra></extra>"
+            ),
             showlegend=False,
-            hoverinfo="skip",
         )
     )
-    y_min = min(rates) - 0.7
-    y_max = max(rates) + 0.7
-    fig.update_layout(
-        margin=dict(l=10, r=10, t=8, b=8),
-        height=220,
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(255,255,255,.42)",
-        xaxis=dict(showgrid=False),
-        yaxis=dict(showgrid=True, gridcolor="rgba(148,163,184,.24)", range=[y_min, y_max], tickformat=".2f"),
-        hovermode="x unified",
-        showlegend=False,
+
+    # Colorful markers with stronger contrast.
+    fig.add_trace(
+        go.Scatter(
+            x=labels,
+            y=rates,
+            mode="markers",
+            marker=dict(size=8, color=segment_colors, line=dict(color="#F7F5F2", width=1.6)),
+            hoverinfo="skip",
+            showlegend=False,
+        )
     )
-    st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
+
+    # 3-point moving average for context.
+    fig.add_trace(
+        go.Scatter(
+            x=labels,
+            y=avg3,
+            mode="lines",
+            line=dict(color="#5C7A7A", width=1.6, dash="dot"),
+            name="3-point avg",
+            hovertemplate="3-point avg: %{y:.2f}<extra></extra>",
+        )
+    )
+
+    # Annotate high and low.
+    hi_idx = rates.index(max(rates))
+    lo_idx = rates.index(min(rates))
+    fig.add_annotation(
+        x=labels[hi_idx],
+        y=rates[hi_idx],
+        text=f"High {rates[hi_idx]:.2f}",
+        showarrow=True,
+        arrowhead=2,
+        arrowsize=1,
+        arrowwidth=1,
+        arrowcolor="#2F6F5E",
+        ax=0,
+        ay=-30,
+        font=dict(size=10, color="#2F6F5E"),
+        bgcolor="rgba(255,255,255,.85)",
+        bordercolor="rgba(47,111,94,.28)",
+    )
+    fig.add_annotation(
+        x=labels[lo_idx],
+        y=rates[lo_idx],
+        text=f"Low {rates[lo_idx]:.2f}",
+        showarrow=True,
+        arrowhead=2,
+        arrowsize=1,
+        arrowwidth=1,
+        arrowcolor="#B0705E",
+        ax=0,
+        ay=30,
+        font=dict(size=10, color="#8A4D42"),
+        bgcolor="rgba(255,255,255,.85)",
+        bordercolor="rgba(176,112,94,.25)",
+    )
+
+    y_min = min(rates) - 0.8
+    y_max = max(rates) + 0.8
+    fig.update_layout(
+        margin=dict(l=8, r=8, t=8, b=8),
+        height=250,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(255,255,255,.50)",
+        xaxis=dict(showgrid=False, tickfont=dict(color="#6B7280"), rangeslider=dict(visible=False)),
+        yaxis=dict(
+            showgrid=True,
+            gridcolor="rgba(148,163,184,.20)",
+            range=[y_min, y_max],
+            tickformat=".2f",
+            tickfont=dict(color="#6B7280"),
+        ),
+        hovermode="x unified",
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=10)),
+    )
+    st.plotly_chart(
+        fig,
+        use_container_width=True,
+        config={"displaylogo": False, "modeBarButtonsToRemove": ["lasso2d", "select2d"]},
+    )
 
 
 def status_badge(status: str) -> str:
