@@ -787,10 +787,19 @@ def main():
         sim_delay = st.slider("Predicted Delay (days)", min_value=0, max_value=45, value=8, step=1)
         gross = sim_invoice * sim_fx
         net = gross * (1 - sim_fee / 100)
-        c_a, c_b, c_c = st.columns(3)
-        c_a.metric("Gross INR", inr(gross))
-        c_b.metric("Net INR", inr(net))
-        c_c.metric("Predicted Realization Date", str(date.today() + timedelta(days=sim_delay)))
+        c_a, c_b, c_c = st.columns(3, gap="small")
+        c_a.markdown(
+            f'<div class="card"><div class="label">Gross INR</div><p class="value">{inr(gross)}</p></div>',
+            unsafe_allow_html=True,
+        )
+        c_b.markdown(
+            f'<div class="card accent"><div class="label">Net INR</div><p class="value">{inr(net)}</p></div>',
+            unsafe_allow_html=True,
+        )
+        c_c.markdown(
+            f'<div class="card"><div class="label">Predicted Realization Date</div><p class="value" style="font-size:1.25rem;">{date.today() + timedelta(days=sim_delay)}</p></div>',
+            unsafe_allow_html=True,
+        )
 
     st.write("")
     f1, f2, f3 = st.columns([1.3, 1.3, 2.4])
