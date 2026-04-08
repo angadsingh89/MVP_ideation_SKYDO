@@ -145,20 +145,36 @@ def theme_css() -> str:
       background:rgba(230,201,168,.35);color:#7b4f35;border:1px solid rgba(182,130,97,.24);
     }
     .table-wrap{
-      border:1px solid rgba(255,255,255,.75);
+      border:1px solid rgba(232,230,227,.95);
       border-radius:16px;background:var(--glass-soft);backdrop-filter:blur(12px);
       padding:.35rem .45rem .45rem .45rem;overflow:auto;box-shadow:0 10px 24px rgba(15,23,42,.06);
     }
-    .table-wrap table{width:100%;border-collapse:separate;border-spacing:0;font-size:.84rem;color:#0f172a;}
+    .table-wrap table{
+      width:100%;
+      border-collapse:separate;
+      border-spacing:0;
+      font-size:.84rem;
+      color:#0f172a;
+      border:none !important;
+      outline:none !important;
+      box-shadow:none !important;
+      background:transparent;
+    }
+    .table-wrap table *{
+      box-shadow:none !important;
+      outline:none !important;
+    }
     .table-wrap thead th{
       text-align:left;padding:.62rem .56rem;font-size:.69rem;text-transform:uppercase;letter-spacing:.05em;
-      color:#334155;background:rgba(255,255,255,.7);border-bottom:1px solid var(--line);
+      color:#425464;background:rgba(255,255,255,.74);border-bottom:1px solid rgba(232,230,227,.95);
+      border-top:none !important;border-left:none !important;border-right:none !important;
       position:sticky;top:0;
     }
     .table-wrap tbody td{
-      padding:.62rem .56rem;border-bottom:1px solid rgba(148,163,184,.12);white-space:nowrap;font-weight:500;
+      padding:.65rem .56rem;border-bottom:1px solid rgba(148,163,184,.10);white-space:nowrap;font-weight:500;
+      border-top:none !important;border-left:none !important;border-right:none !important;
     }
-    .table-wrap tbody tr:hover{background:rgba(255,255,255,.68);}
+    .table-wrap tbody tr:hover{background:rgba(255,255,255,.78);}
     .status{
       display:inline-block;padding:.18rem .45rem;border-radius:999px;font-size:.72rem;font-weight:600;
       border:1px solid transparent;
