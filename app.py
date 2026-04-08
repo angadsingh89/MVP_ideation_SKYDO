@@ -779,7 +779,7 @@ def main():
         st.markdown("</div>", unsafe_allow_html=True)
 
     st.write("")
-    with st.expander("What-if Cashflow Simulator", expanded=False):
+    with st.expander("FX & Fee Impact Analyzer", expanded=False):
         s1, s2, s3 = st.columns(3)
         sim_invoice = s1.number_input("Invoice Amount (USD)", min_value=100.0, value=5000.0, step=100.0)
         sim_fx = s2.slider("FX Rate (USD to INR)", min_value=70.0, max_value=100.0, value=92.5, step=0.1)
